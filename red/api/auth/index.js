@@ -184,14 +184,15 @@ module.exports = {
             }
         ));
 
-        adminApp.get('/auth/strategy', passport.authenticate(strategy.name));
+        adminApp.get('/auth/strategy', passport.authenticate(strategy.name, options));
+
         adminApp.get('/auth/strategy/callback',
-            passport.authenticate(strategy.name, {session:false, failureRedirect: settings.httpAdminRoot }),
+            passport.authenticate(strategy.name, {session:false, failureRedirect: '/' }),
             function(req, res) {
                 var tokens = req.user.tokens;
                 delete req.user.tokens;
                 // Successful authentication, redirect home.
-                res.redirect(settings.httpAdminRoot + '?access_token='+tokens.accessToken);
+                res.redirect('/?access_token='+tokens.accessToken);
             }
         );
 
