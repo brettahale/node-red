@@ -133,6 +133,57 @@ function completeVerify(profile,done) {
     });
 }
 
+function genericStrategy(adminApp,strategy) {
+    var session = require('express-session');
+    var crypto = require("crypto");
+    adminApp.use(session({
+                             // As the session is only used across the life-span of an auth
+                             // hand-shake, we can use a instance specific random string
+                             secret: crypto.randomBytes(20).toString('hex'),
+                             resave: false,
+                             saveUninitialized:false
+                         }));
+    //TODO: all passport references ought to be in ./auth
+    adminApp.use(passport.initialize());
+    adminApp.use(passport.session());
+
+    var options = strategy.options;
+
+    passport.use(new strategy.strategy(options,
+                                       function() {
+                                           var originalDone = arguments[arguments.length-1];
+                                           if (options.verify) {
+                                               var args = Array.prototype.slice.call(arguments);
+                                               args[args.length-1] = function(err,profile) {
+                                                   if (err) {
+                                                       return originalDone(err);
+                                                   } else {
+                                                       return completeVerify(profile,originalDone);
+                                                   }
+                                               };
+                                               options.verify.apply(null,args);
+                                           } else {
+                                               var profile = arguments[arguments.length - 2];
+                                               return completeVerify(profile,originalDone);
+                                           }
+
+                                       }
+    ));
+
+    adminApp.get('/auth/strategy', passport.authenticate(strategy.name, options));
+
+    adminApp.get('/auth/strategy/callback',
+                 passport.authenticate(strategy.name, {session:false, failureRedirect: '/' }),
+                 function(req, res) {
+                     var tokens = req.user.tokens;
+                     delete req.user.tokens;
+                     // Successful authentication, redirect home.
+                     res.redirect('/?access_token='+tokens.accessToken);
+                 }
+    );
+
+}
+
 module.exports = {
     init: init,
     needsPermission: needsPermission,
@@ -147,54 +198,5 @@ module.exports = {
     },
     login: login,
     revoke: revoke,
-    genericStrategy: function(adminApp,strategy) {
-        var session = require('express-session');
-        var crypto = require("crypto");
-        adminApp.use(session({
-            // As the session is only used across the life-span of an auth
-            // hand-shake, we can use a instance specific random string
-            secret: crypto.randomBytes(20).toString('hex'),
-            resave: false,
-            saveUninitialized:false
-        }));
-        //TODO: all passport references ought to be in ./auth
-        adminApp.use(passport.initialize());
-        adminApp.use(passport.session());
-
-        var options = strategy.options;
-
-        passport.use(new strategy.strategy(options,
-            function() {
-                var originalDone = arguments[arguments.length-1];
-                if (options.verify) {
-                    var args = Array.prototype.slice.call(arguments);
-                    args[args.length-1] = function(err,profile) {
-                        if (err) {
-                            return originalDone(err);
-                        } else {
-                            return completeVerify(profile,originalDone);
-                        }
-                    };
-                    options.verify.apply(null,args);
-                } else {
-                    var profile = arguments[arguments.length - 2];
-                    return completeVerify(profile,originalDone);
-                }
-
-            }
-        ));
-
-        adminApp.get('/auth/strategy', passport.authenticate(strategy.name, options));
-
-        adminApp.get('/auth/strategy/callback',
-            passport.authenticate(strategy.name, {session:false, failureRedirect: '/' }),
-            function(req, res) {
-                var tokens = req.user.tokens;
-                delete req.user.tokens;
-                // Successful authentication, redirect home.
-                res.redirect('/?access_token='+tokens.accessToken);
-            }
-        );
-
-    }
+    genericStrategy: genericStrategy
 }
